@@ -3,7 +3,7 @@ import os
 import sys
 import glob
 import argparse
-
+import pprint
 
 # Courtesy of http://stackoverflow.com/questions/5574702/how-to-print-to-stderr-in-python
 def eprint(*args, **kwargs):
@@ -61,19 +61,15 @@ def is_dir(dirname):
 # Read from the files with markers lower or equal to the current marker
 def read_markers(files, current_marker, markers):
     have_seqs = False
-    max_length = -1
     for counter, file in enumerate(files):
-        if (current_marker >= markers[counter]["ID"] ):
-            markers[counter]["ID"] = ""
+        if (current_marker != markers[counter]["ID"] and current_marker != ""):
             markers[counter]["seq"] = ""
         else:
             markers[counter]["ID"] = file.readline().replace('\r','').replace('\n', '')
             markers[counter]["seq"] = file.readline().replace('\r','').replace('\n', '')
             if (markers[counter]["seq"] != ""):
                 have_seqs = True
-            if (len(markers[counter]["seq"]) < max_length):
-                max_length = len(markers[counter]["seq"])
-    return max_length, markers
+    return have_seqs, markers
 
 
 parser = argparse.ArgumentParser(description="Output the chosen codons (1, 2, 3, 1&2) for all the genes with a defined percentage of coverage in the fasta samples (ordered by gene) on a particular directory.")
@@ -106,58 +102,68 @@ for i, f in enumerate(opened_files):
 #        {'ID':10,'seq':"AWRE"},
 #        {'ID':11,'seq':"ASDG"},
 #        ]
-#print markers
-#
-#current_marker = min([x["ID"] for x in markers if (x["val"]["cond"] == True)])
-#print current_marker
-#sys.exit()
 
 # Open a variable list of files from a directory in write mode (filtered files)
 with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
 # Open a variable list of files from a directory in read mode (sorted files)
     with openFiles(opened_files, ['r' for x in range(len(opened_files))]) as ll:
-        max_length, markers = read_markers(ll, current_marker, markers) # Read the markers from the files and check if we still have markers to read, the _first time it asumes no file is empty_
+        have_seqs, markers = read_markers(ll, current_marker, markers) # Read the markers from the files and check if we still have markers to read, the _first time it asumes no file is empty_
         current_marker = min([x["ID"] for x in markers if x["ID"] != ""])
+        max_length = max([len(x["seq"]) for x in markers if x["ID"] == current_marker])
         while have_seqs:
             has_enough_coverage = [True] * len(opened_files)
             num_samples_low_coverage = 0
+            print([x["ID"] for x in markers])
             for i, m in enumerate(markers):
-                if len(m["seq"] > 0):
-                    info_percentage = 1.0 - m["seq"].count("?") / float(len(m["seq"]))
+                if (m["ID"] != current_marker):
+                    # eprint("File ", opened_files[i], " doesn't contain gene ", current_marker)
+                    continue
+                # eprint("File ", opened_files[i], " contains gene ", current_marker)
+                if (len(m["seq"]) > 0):
+                    info_percentage = 1.0 - m["seq"].count("N") / float(max_length)
                 else:
                     info_percentage = 0.0
-                eprint(info_percentage, "<= ", min_sequence, "?")
                 if info_percentage <= min_sequence: # Are all my samples complete? or at least with N percentage of information?
-                    eprint("Rejected")
+                    eprint("Rejected gene ", m["ID"], "from ", opened_files[i], " as it doesn't contain enough known bases")
                     num_samples_low_coverage+=1
                     has_enough_coverage[i] = False
             # Check that this gene has enough information on at least N percent of the samples print it to the filtered output
             if (min_samples <= has_enough_coverage.count(True)/float(len(has_enough_coverage))):
-                longest_seq = max([len(x["seq"]) for x in markers])
-                print(current_marker, sep="")
+                eprint("Gene ", current_marker, " accepted")
+                longest_seq = max([len(x["seq"]) for x in markers if x["ID"] == current_marker])
                 for file, m in enumerate(markers):
                     if m["ID"] == current_marker:
-                        m["seq"].ljust(longest_seq, "?") # Pad the genes with ? for the lenght of unknowns
+                        # eprint("LIB ", opened_files[file], " contains gene ", current_marker)
+                        m["seq"].ljust(longest_seq, "N") # Pad the genes with ? for the lenght of unknowns
+                        printed = 0
                         for i, c in enumerate(m["seq"]):
                             if ( i%3 == 0 and (codon_option == 'codon1' or codon_option == 'codon12') ):
                                 ww[file].write(c)
+                                printed+=1
                             if ( i%3 == 1 and (codon_option == 'codon2' or codon_option == 'codon12') ):
                                 ww[file].write(c)
+                                printed+=1
                             if ( i%3 == 2 and codon_option == 'codon3' ):
                                 ww[file].write(c)
+                                printed+=1
+                        eprint("Printed ", printed, " characters for ", opened_files[file], " gene ", current_marker)
+                    else:
+                        # eprint("LIB ", opened_files[file], " doesn't contain gene ", current_marker)
+                        if (codon_option == 'codon1' or codon_option == 'codon2' or codon_option == 'codon3'):
+                            ww[file].write("N" * (longest_seq/3))
+                            eprint("Printed ", longest_seq/3, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
+                        if (codon_option == 'codon12'):
+                            ww[file].write("N" * (longest_seq*2)/3)
+                            eprint("Printed ", (longest_seq*2)/3, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
+                        else:
+                            ww[file].write("N" * longest_seq)
+                            eprint("Printed ", longest_seq, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
             else:
                 eprint("Gene ", current_marker, " has low coverage for ", num_samples_low_coverage, " samples, out of ", len(has_enough_coverage), "samples. Representing: ", 100 * has_enough_coverage.count(True)/float(len(has_enough_coverage)), "% of the samples")
 
             have_seqs, markers = read_markers(ll, current_marker, markers)
             if have_seqs:
-                current_marker = min([x["ID"] for x in markers if (x["seq"] != "")]) # Since the file might have reached EOF we do not consider files that are not advancing
-
-#with openFiles(filtered_files, ['r' for x in range(len(filtered_files))]) as ll:
-#    with open("sequences.phy", 'w') as f:
-#        # Generate the file's header, Sample name + first 60 chars of the file for each file
-#        seqs = read_lines(ll)
-#        f.write()
-#        # Read 60 chars by 60 chars from all files and print them
+                current_marker = min([x["ID"] for x in markers if (x["seq"] != "" and x["ID"] != "")]) # Since the file might have reached EOF we do not consider files that are not advancing nor genes that do not exist (ID == "")
 
 sys.exit()
 
