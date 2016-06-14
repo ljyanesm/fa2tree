@@ -26,7 +26,7 @@ class openFiles():
         for f, fl in zip(self.files, self.flags):
             self.fhs.append(open(f,fl))
         return self.fhs
-       
+
     def __exit__(self, type, value, traceback):
         for f in self.fhs:
             f.close()
@@ -116,6 +116,8 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
             print([x["ID"] for x in markers])
             for i, m in enumerate(markers):
                 if (m["ID"] != current_marker):
+                    num_samples_low_coverage+=1
+                    has_enough_coverage[i] = False
                     # eprint("File ", opened_files[i], " doesn't contain gene ", current_marker)
                     continue
                 # eprint("File ", opened_files[i], " contains gene ", current_marker)
@@ -124,7 +126,7 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
                 else:
                     info_percentage = 0.0
                 if info_percentage <= min_sequence: # Are all my samples complete? or at least with N percentage of information?
-                    eprint("Rejected gene ", m["ID"], "from ", opened_files[i], " as it doesn't contain enough known bases")
+                    eprint("Sample ", opened_files[i], " doesn't contain enough known bases for gene ", m["ID"])
                     num_samples_low_coverage+=1
                     has_enough_coverage[i] = False
             # Check that this gene has enough information on at least N percent of the samples print it to the filtered output
@@ -134,7 +136,7 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
                 for file, m in enumerate(markers):
                     if m["ID"] == current_marker:
                         # eprint("LIB ", opened_files[file], " contains gene ", current_marker)
-                        m["seq"].ljust(longest_seq, "N") # Pad the genes with ? for the lenght of unknowns
+                        m["seq"] = m["seq"].ljust(longest_seq, "N") # Pad the genes with ? for the lenght of unknowns
                         printed = 0
                         for i, c in enumerate(m["seq"]):
                             if ( i%3 == 0 and (codon_option == 'codon1' or codon_option == 'codon12') ):
@@ -146,18 +148,14 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
                             if ( i%3 == 2 and codon_option == 'codon3' ):
                                 ww[file].write(c)
                                 printed+=1
-                        eprint("Printed ", printed, " characters for ", opened_files[file], " gene ", current_marker)
                     else:
                         # eprint("LIB ", opened_files[file], " doesn't contain gene ", current_marker)
                         if (codon_option == 'codon1' or codon_option == 'codon2' or codon_option == 'codon3'):
                             ww[file].write("N" * (longest_seq/3))
-                            eprint("Printed ", longest_seq/3, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
-                        if (codon_option == 'codon12'):
+                        elif (codon_option == 'codon12'):
                             ww[file].write("N" * (longest_seq*2)/3)
-                            eprint("Printed ", (longest_seq*2)/3, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
                         else:
                             ww[file].write("N" * longest_seq)
-                            eprint("Printed ", longest_seq, " characters for ", opened_files[file], " gene ", current_marker, " not present in LIB")
             else:
                 eprint("Gene ", current_marker, " has low coverage for ", num_samples_low_coverage, " samples, out of ", len(has_enough_coverage), "samples. Representing: ", 100 * has_enough_coverage.count(True)/float(len(has_enough_coverage)), "% of the samples")
 
