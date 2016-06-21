@@ -102,7 +102,9 @@ for i, f in enumerate(opened_files):
 #        {'ID':10,'seq':"AWRE"},
 #        {'ID':11,'seq':"ASDG"},
 #        ]
-
+genes_rejected = []
+genes_accepted = []
+num_genes = 0
 # Open a variable list of files from a directory in write mode (filtered files)
 with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
 # Open a variable list of files from a directory in read mode (sorted files)
@@ -110,6 +112,7 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
         have_seqs, markers = read_markers(ll, current_marker, markers) # Read the markers from the files and check if we still have markers to read, the _first time it asumes no file is empty_
         current_marker = min([x["ID"] for x in markers if x["ID"] != ""])
         while have_seqs:
+            num_genes += 1
             has_enough_coverage = [True] * len(opened_files)
             max_length = max([len(x["seq"]) for x in markers if x["ID"] == current_marker])
             print("Gene", current_marker, "has a max length of", max_length)
@@ -132,6 +135,7 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
             # Check that this gene has enough information on at least N percent of the samples print it to the filtered output
             if (min_samples <= has_enough_coverage.count(True)/float(len(has_enough_coverage))):
                 eprint("Gene", current_marker, "accepted")
+                genes_accepted.append(current_marker)
                 longest_seq = max([len(x["seq"]) for x in markers if x["ID"] == current_marker])
                 for file, m in enumerate(markers):
                     if m["ID"] == current_marker:
@@ -158,10 +162,21 @@ with openFiles(filtered_files, ['w' for x in range(len(filtered_files))]) as ww:
                             ww[file].write("N" * longest_seq)
             else:
                 eprint("Rejected: Gene", current_marker, "it has low coverage for", num_samples_low_coverage, "samples, out of", len(has_enough_coverage), "samples. Representing:", str(round(100 * has_enough_coverage.count(True)/float(len(has_enough_coverage)),2)), "% of the samples")
+                genes_rejected.append(current_marker)
 
             have_seqs, markers = read_markers(ll, current_marker, markers)
             if have_seqs:
                 current_marker = min([x["ID"] for x in markers if (x["seq"] != "" and x["ID"] != "")]) # Since the file might have reached EOF we do not consider files that are not advancing nor genes that do not exist (ID == "")
+
+print()
+print("Summary")
+print("From", len(opened_files), "libraries, with a total of", num_genes, "genes,", len(genes_accepted), "genes were accepted and", len(genes_rejected), "genes were rejected.")
+print("The following genes were accepted:")
+print(genes_accepted)
+
+print("The following genes were rejected:")
+print(genes_rejected)
+
 
 sys.exit()
 
